@@ -1,14 +1,18 @@
+// Copyright (C) 2023, Ava Labs, Inc. All rights reserved.
+// See the file LICENSE for licensing terms.
+
 package auth
 
 import (
 	"context"
+
+	"tokenvm/storage"
 
 	"github.com/ava-labs/avalanchego/ids"
 	"github.com/ava-labs/avalanchego/vms/platformvm/warp"
 	"github.com/ava-labs/hypersdk/chain"
 	"github.com/ava-labs/hypersdk/codec"
 	"github.com/ava-labs/hypersdk/crypto"
-	"github.com/rafael-abuawad/samplevm/storage"
 )
 
 var _ chain.Auth = (*ED25519)(nil)

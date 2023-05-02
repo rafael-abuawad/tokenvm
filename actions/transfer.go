@@ -1,7 +1,13 @@
+// Copyright (C) 2023, Ava Labs, Inc. All rights reserved.
+// See the file LICENSE for licensing terms.
+
 package actions
 
 import (
 	"context"
+
+	"tokenvm/auth"
+	"tokenvm/storage"
 
 	"github.com/ava-labs/avalanchego/ids"
 	"github.com/ava-labs/avalanchego/vms/platformvm/warp"
@@ -10,8 +16,6 @@ import (
 	"github.com/ava-labs/hypersdk/consts"
 	"github.com/ava-labs/hypersdk/crypto"
 	"github.com/ava-labs/hypersdk/utils"
-	"github.com/rafael-abuawad/samplevm/auth"
-	"github.com/rafael-abuawad/samplevm/storage"
 )
 
 var _ chain.Action = (*Transfer)(nil)

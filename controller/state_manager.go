@@ -1,11 +1,19 @@
+// Copyright (C) 2023, Ava Labs, Inc. All rights reserved.
+// See the file LICENSE for licensing terms.
+
 package controller
 
 import (
+	"tokenvm/storage"
+
 	"github.com/ava-labs/avalanchego/ids"
-	"github.com/rafael-abuawad/samplevm/storage"
 )
 
 type StateManager struct{}
+
+func (*StateManager) HeightKey() []byte {
+	return storage.HeightKey()
+}
 
 func (*StateManager) IncomingWarpKey(sourceChainID ids.ID, msgID ids.ID) []byte {
 	return storage.IncomingWarpKeyPrefix(sourceChainID, msgID)

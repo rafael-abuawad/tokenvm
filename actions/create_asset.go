@@ -1,15 +1,19 @@
+// Copyright (C) 2023, Ava Labs, Inc. All rights reserved.
+// See the file LICENSE for licensing terms.
+
 package actions
 
 import (
 	"context"
+
+	"tokenvm/auth"
+	"tokenvm/storage"
 
 	"github.com/ava-labs/avalanchego/ids"
 	"github.com/ava-labs/avalanchego/vms/platformvm/warp"
 	"github.com/ava-labs/hypersdk/chain"
 	"github.com/ava-labs/hypersdk/codec"
 	"github.com/ava-labs/hypersdk/utils"
-	"github.com/rafael-abuawad/samplevm/auth"
-	"github.com/rafael-abuawad/samplevm/storage"
 )
 
 var _ chain.Action = (*CreateAsset)(nil)
@@ -33,6 +37,7 @@ func (c *CreateAsset) Execute(
 	txID ids.ID,
 	_ bool,
 ) (*chain.Result, error) {
+	// TODO
 	actor := auth.GetActor(rauth)
 	unitsUsed := c.MaxUnits(r) // max units == units
 	if len(c.Metadata) > MaxMetadataSize {
@@ -43,7 +48,11 @@ func (c *CreateAsset) Execute(
 	if err := storage.SetAsset(ctx, db, txID, c.Metadata, 0, actor, false); err != nil {
 		return &chain.Result{Success: false, Units: unitsUsed, Output: utils.ErrBytes(err)}, nil
 	}
-	return &chain.Result{Success: true, Units: unitsUsed}, nil
+
+	/// TODO: It is important to return the correct Chain Result and nil for any errors
+	//		  in this section. This will ensure that the user and the chain receive
+	//		  accurate values whenever they use this action.
+	return nil, nil
 }
 
 func (c *CreateAsset) MaxUnits(chain.Rules) uint64 {

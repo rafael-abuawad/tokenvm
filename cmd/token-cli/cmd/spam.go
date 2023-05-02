@@ -1,11 +1,12 @@
+// Copyright (C) 2023, Ava Labs, Inc. All rights reserved.
+// See the file LICENSE for licensing terms.
+
 //nolint:gosec
 package cmd
 
 import (
 	"context"
-	"fmt"
 	"math/rand"
-	"net/url"
 	"os"
 	"os/signal"
 	"strings"
@@ -13,26 +14,27 @@ import (
 	"syscall"
 	"time"
 
+	"tokenvm/actions"
+	"tokenvm/auth"
+	trpc "tokenvm/rpc"
+	"tokenvm/utils"
+
 	"github.com/ava-labs/avalanchego/ids"
 	"github.com/ava-labs/avalanchego/utils/math"
 	"github.com/ava-labs/avalanchego/utils/set"
 	"github.com/ava-labs/hypersdk/chain"
 	"github.com/ava-labs/hypersdk/crypto"
-	"github.com/ava-labs/hypersdk/listeners"
+	"github.com/ava-labs/hypersdk/rpc"
 	hutils "github.com/ava-labs/hypersdk/utils"
-	"github.com/ava-labs/hypersdk/vm"
-	"github.com/rafael-abuawad/samplevm/actions"
-	"github.com/rafael-abuawad/samplevm/auth"
-	"github.com/rafael-abuawad/samplevm/client"
-	"github.com/rafael-abuawad/samplevm/utils"
 	"github.com/spf13/cobra"
 )
 
 const feePerTx = 1000
 
 type txIssuer struct {
-	c *client.Client
-	d *vm.DecisionRPCClient
+	c  *rpc.JSONRPCClient
+	tc *trpc.JSONRPCClient
+	d  *rpc.WebSocketClient
 
 	l              sync.Mutex
 	outstandingTxs int
@@ -76,7 +78,7 @@ var runSpamCmd = &cobra.Command{
 		ctx := context.Background()
 
 		// Select chain
-		_, uris, err := promptChain("select chainID", nil)
+		chainID, uris, err := promptChain("select chainID", nil)
 		if err != nil {
 			return err
 		}
@@ -89,12 +91,13 @@ var runSpamCmd = &cobra.Command{
 		if len(keys) == 0 {
 			return ErrNoKeys
 		}
-		cli := client.New(uris[0])
+		cli := rpc.NewJSONRPCClient(uris[0])
+		tcli := trpc.NewJSONRPCClient(uris[0], chainID)
 		hutils.Outf("{{cyan}}stored keys:{{/}} %d\n", len(keys))
 		balances := make([]uint64, len(keys))
 		for i := 0; i < len(keys); i++ {
 			address := utils.Address(keys[i].PublicKey())
-			balance, err := cli.Balance(ctx, address, ids.Empty)
+			balance, err := tcli.Balance(ctx, address, ids.Empty)
 			if err != nil {
 				return err
 			}
@@ -127,7 +130,15 @@ var runSpamCmd = &cobra.Command{
 			assetString(ids.Empty),
 		)
 		accounts := make([]crypto.PrivateKey, numAccounts)
-		txs := make([]ids.ID, numAccounts)
+		dcli, err := rpc.NewWebSocketClient(uris[0])
+		if err != nil {
+			return err
+		}
+		funds := map[crypto.PublicKey]uint64{}
+		parser, err := tcli.Parser(ctx)
+		if err != nil {
+			return err
+		}
 		for i := 0; i < numAccounts; i++ {
 			// Create account
 			pk, err := crypto.GeneratePrivateKey()
@@ -137,7 +148,7 @@ var runSpamCmd = &cobra.Command{
 			accounts[i] = pk
 
 			// Send funds
-			submit, tx, _, err := cli.GenerateTransaction(ctx, nil, &actions.Transfer{
+			_, tx, _, err := cli.GenerateTransaction(ctx, parser, nil, &actions.Transfer{
 				To:    pk.PublicKey(),
 				Asset: ids.Empty,
 				Value: distAmount,
@@ -145,17 +156,25 @@ var runSpamCmd = &cobra.Command{
 			if err != nil {
 				return err
 			}
-			if err := submit(ctx); err != nil {
+			if err := dcli.RegisterTx(tx); err != nil {
 				return err
 			}
-			txs[i] = tx.ID()
+			funds[pk.PublicKey()] = distAmount
+
+			// Ensure Snowman++ is activated
+			if i < 10 {
+				time.Sleep(500 * time.Millisecond)
+			}
 		}
 		for i := 0; i < numAccounts; i++ {
-			success, err := cli.WaitForTransaction(ctx, txs[i])
+			_, dErr, result, err := dcli.ListenTx(ctx)
 			if err != nil {
 				return err
 			}
-			if !success {
+			if dErr != nil {
+				return dErr
+			}
+			if !result.Success {
 				// Should never happen
 				return ErrTxFailed
 			}
@@ -165,21 +184,13 @@ var runSpamCmd = &cobra.Command{
 		// Kickoff txs
 		clients := make([]*txIssuer, len(uris))
 		for i := 0; i < len(uris); i++ {
-			c := client.New(uris[i])
-			port, err := c.DecisionsPort(ctx)
+			cli := rpc.NewJSONRPCClient(uris[i])
+			tcli := trpc.NewJSONRPCClient(uris[i], chainID)
+			dcli, err := rpc.NewWebSocketClient(uris[i])
 			if err != nil {
 				return err
 			}
-			u, err := url.Parse(uris[i])
-			if err != nil {
-				return err
-			}
-			tcpURI := fmt.Sprintf("%s:%d", u.Hostname(), port)
-			cli, err := vm.NewDecisionRPCClient(tcpURI)
-			if err != nil {
-				return err
-			}
-			clients[i] = &txIssuer{c: c, d: cli}
+			clients[i] = &txIssuer{c: cli, tc: tcli, d: dcli}
 		}
 		signals := make(chan os.Signal, 2)
 		signal.Notify(signals, syscall.SIGINT, syscall.SIGTERM)
@@ -203,7 +214,7 @@ var runSpamCmd = &cobra.Command{
 			wg.Add(1)
 			go func() {
 				for {
-					txID, dErr, result, err := issuer.d.Listen()
+					txID, dErr, result, err := issuer.d.ListenTx(context.TODO())
 					if err != nil {
 						return
 					}
@@ -222,7 +233,7 @@ var runSpamCmd = &cobra.Command{
 						}
 					} else {
 						// We can't error match here because we receive it over the wire.
-						if !strings.Contains(dErr.Error(), listeners.ErrExpired.Error()) {
+						if !strings.Contains(dErr.Error(), rpc.ErrExpired.Error()) {
 							hutils.Outf("{{orange}}pre-execute tx failure:{{/}} %v\n", dErr)
 						}
 					}
@@ -249,6 +260,7 @@ var runSpamCmd = &cobra.Command{
 		// broadcast txs
 		t := time.NewTimer(0) // ensure no duplicates created
 		defer t.Stop()
+		var runs int
 		for !exiting {
 			select {
 			case <-t.C:
@@ -274,11 +286,17 @@ var runSpamCmd = &cobra.Command{
 						if err != nil {
 							return err
 						}
-						_, tx, fees, err = issuer.c.GenerateTransaction(ctx, nil, &actions.Transfer{
-							To:    recipient,
-							Asset: ids.Empty,
-							Value: 1,
-						}, auth.NewED25519Factory(accounts[i]))
+						_, tx, fees, err = issuer.c.GenerateTransaction(
+							ctx,
+							parser,
+							nil,
+							&actions.Transfer{
+								To:    recipient,
+								Asset: ids.Empty,
+								Value: 1,
+							},
+							auth.NewED25519Factory(accounts[i]),
+						)
 						if err != nil {
 							hutils.Outf("{{orange}}failed to generate:{{/}} %v\n", err)
 							continue
@@ -294,7 +312,7 @@ var runSpamCmd = &cobra.Command{
 					infl.Lock()
 					inflightTxs.Add(tx.ID())
 					infl.Unlock()
-					if err := issuer.d.IssueTx(tx); err != nil {
+					if err := issuer.d.RegisterTx(tx); err != nil {
 						infl.Lock()
 						inflightTxs.Remove(tx.ID())
 						infl.Unlock()
@@ -302,9 +320,17 @@ var runSpamCmd = &cobra.Command{
 						hutils.Outf("{{orange}}failed to issue:{{/}} %v\n", err)
 						continue
 					}
+					funds[accounts[i].PublicKey()] -= (fees + 1)
 					issuer.l.Lock()
 					issuer.outstandingTxs++
 					issuer.l.Unlock()
+
+					// Only send 1 transaction per second until we are sure Snowman++ is
+					// activated.
+					if runs < 10 {
+						runs++
+						break
+					}
 				}
 				l.Lock()
 				infl.Lock()
@@ -341,7 +367,7 @@ var runSpamCmd = &cobra.Command{
 			for {
 				select {
 				case <-t.C:
-					_ = submitDummy(dctx, cli, key.PublicKey(), factory)
+					_ = submitDummy(dctx, cli, tcli, key.PublicKey(), factory)
 				case <-dctx.Done():
 					return
 				}
@@ -352,20 +378,19 @@ var runSpamCmd = &cobra.Command{
 
 		// Return funds
 		hutils.Outf("{{yellow}}returning funds to %s{{/}}\n", utils.Address(key.PublicKey()))
-		var returnedBalance uint64
-		txs = make([]ids.ID, numAccounts)
+		var (
+			returnedBalance uint64
+			sent            int
+		)
 		for i := 0; i < numAccounts; i++ {
-			address := utils.Address(accounts[i].PublicKey())
-			balance, err := cli.Balance(ctx, address, ids.Empty)
-			if err != nil {
-				return err
-			}
+			balance := funds[accounts[i].PublicKey()]
 			if transferFee > balance {
 				continue
 			}
+			sent++
 			// Send funds
 			returnAmt := balance - transferFee
-			submit, tx, _, err := cli.GenerateTransaction(ctx, nil, &actions.Transfer{
+			_, tx, _, err := cli.GenerateTransaction(ctx, parser, nil, &actions.Transfer{
 				To:    key.PublicKey(),
 				Asset: ids.Empty,
 				Value: returnAmt,
@@ -373,22 +398,25 @@ var runSpamCmd = &cobra.Command{
 			if err != nil {
 				return err
 			}
-			if err := submit(ctx); err != nil {
+			if err := dcli.RegisterTx(tx); err != nil {
 				return err
 			}
-			txs[i] = tx.ID()
 			returnedBalance += returnAmt
-		}
-		for i := 0; i < numAccounts; i++ {
-			if txs[i] == ids.Empty {
-				// No balance to return
-				continue
+
+			// Ensure Snowman++ is activated
+			if i < 10 {
+				time.Sleep(500 * time.Millisecond)
 			}
-			success, err := cli.WaitForTransaction(ctx, txs[i])
+		}
+		for i := 0; i < sent; i++ {
+			_, dErr, result, err := dcli.ListenTx(context.TODO())
 			if err != nil {
 				return err
 			}
-			if !success {
+			if dErr != nil {
+				return dErr
+			}
+			if !result.Success {
 				// Should never happen
 				return ErrTxFailed
 			}

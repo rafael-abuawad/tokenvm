@@ -1,9 +1,12 @@
+// Copyright (C) 2023, Ava Labs, Inc. All rights reserved.
+// See the file LICENSE for licensing terms.
+
 package utils
 
 import (
 	"github.com/ava-labs/hypersdk/crypto"
 
-	"github.com/rafael-abuawad/samplevm/consts"
+	"tokenvm/consts"
 )
 
 func Address(pk crypto.PublicKey) string {

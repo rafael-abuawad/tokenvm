@@ -1,10 +1,14 @@
+// Copyright (C) 2023, Ava Labs, Inc. All rights reserved.
+// See the file LICENSE for licensing terms.
+
 package controller
 
 import (
+	"tokenvm/consts"
+
 	ametrics "github.com/ava-labs/avalanchego/api/metrics"
 	"github.com/ava-labs/avalanchego/utils/wrappers"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/rafael-abuawad/samplevm/consts"
 )
 
 type metrics struct {
@@ -12,7 +16,13 @@ type metrics struct {
 	mintAsset   prometheus.Counter
 	burnAsset   prometheus.Counter
 	modifyAsset prometheus.Counter
-	transfer    prometheus.Counter
+
+	transfer prometheus.Counter
+
+	createOrder prometheus.Counter
+	fillOrder   prometheus.Counter
+	closeOrder  prometheus.Counter
+
 	importAsset prometheus.Counter
 	exportAsset prometheus.Counter
 }
@@ -44,6 +54,21 @@ func newMetrics(gatherer ametrics.MultiGatherer) (*metrics, error) {
 			Name:      "transfer",
 			Help:      "number of transfer actions",
 		}),
+		createOrder: prometheus.NewCounter(prometheus.CounterOpts{
+			Namespace: "actions",
+			Name:      "create_order",
+			Help:      "number of create order actions",
+		}),
+		fillOrder: prometheus.NewCounter(prometheus.CounterOpts{
+			Namespace: "actions",
+			Name:      "fill_order",
+			Help:      "number of fill order actions",
+		}),
+		closeOrder: prometheus.NewCounter(prometheus.CounterOpts{
+			Namespace: "actions",
+			Name:      "close_order",
+			Help:      "number of close order actions",
+		}),
 		importAsset: prometheus.NewCounter(prometheus.CounterOpts{
 			Namespace: "actions",
 			Name:      "import_asset",
@@ -62,7 +87,13 @@ func newMetrics(gatherer ametrics.MultiGatherer) (*metrics, error) {
 		r.Register(m.mintAsset),
 		r.Register(m.burnAsset),
 		r.Register(m.modifyAsset),
+
 		r.Register(m.transfer),
+
+		r.Register(m.createOrder),
+		r.Register(m.fillOrder),
+		r.Register(m.closeOrder),
+
 		r.Register(m.importAsset),
 		r.Register(m.exportAsset),
 		gatherer.Register(consts.Name, r),

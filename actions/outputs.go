@@ -1,3 +1,6 @@
+// Copyright (C) 2023, Ava Labs, Inc. All rights reserved.
+// See the file LICENSE for licensing terms.
+
 package actions
 
 var (
@@ -9,6 +12,7 @@ var (
 	OutputOutTickZero            = []byte("out rate is zero")
 	OutputSupplyZero             = []byte("supply is zero")
 	OutputSupplyMisaligned       = []byte("supply is misaligned")
+	OutputOrderMissing           = []byte("order is missing")
 	OutputUnauthorized           = []byte("unauthorized")
 	OutputWrongIn                = []byte("wrong in asset")
 	OutputWrongOut               = []byte("wrong out asset")

@@ -1,3 +1,6 @@
+// Copyright (C) 2023, Ava Labs, Inc. All rights reserved.
+// See the file LICENSE for licensing terms.
+
 package genesis
 
 import (
@@ -9,12 +12,13 @@ import (
 	"github.com/ava-labs/avalanchego/trace"
 	smath "github.com/ava-labs/avalanchego/utils/math"
 
+	"tokenvm/consts"
+	"tokenvm/storage"
+	"tokenvm/utils"
+
 	"github.com/ava-labs/hypersdk/chain"
 	"github.com/ava-labs/hypersdk/crypto"
 	"github.com/ava-labs/hypersdk/vm"
-	"github.com/rafael-abuawad/samplevm/consts"
-	"github.com/rafael-abuawad/samplevm/storage"
-	"github.com/rafael-abuawad/samplevm/utils"
 )
 
 var _ vm.Genesis = (*Genesis)(nil)

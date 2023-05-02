@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# Copyright (C) 2023, Ava Labs, Inc. All rights reserved.
+# See the file LICENSE for licensing terms.
 
 set -e
 
@@ -15,7 +17,7 @@ if ! [[ "$0" =~ scripts/run.sh ]]; then
   exit 255
 fi
 
-VERSION=1.9.16
+VERSION=1.10.1
 MODE=${MODE:-run}
 LOGLEVEL=${LOGLEVEL:-info}
 STATESYNC_DELAY=${STATESYNC_DELAY:-0}
@@ -96,6 +98,9 @@ if [[ -z "${GENESIS_PATH}" ]]; then
   echo "creating VM genesis file with allocations"
   rm -f /tmp/tokenvm.genesis
   /tmp/token-cli genesis generate /tmp/allocations.json \
+  --max-block-units 4000000 \
+  --window-target-units 100000000000 \
+  --window-target-blocks 30 \
   --genesis-file /tmp/tokenvm.genesis
 else
   echo "copying custom genesis file"
@@ -109,6 +114,7 @@ fi
 
 echo "creating vm config"
 rm -f /tmp/tokenvm.config
+rm -rf /tmp/tokenvm-e2e-profiles
 cat <<EOF > /tmp/tokenvm.config
 {
   "mempoolSize": 10000000,
@@ -117,10 +123,13 @@ cat <<EOF > /tmp/tokenvm.config
   "parallelism": 5,
   "streamingBacklogSize": 10000000,
   "trackedPairs":["*"],
+  "preferredBlocksPerSecond": 3,
+  "continuousProfilerDir":"/tmp/tokenvm-e2e-profiles/*",
   "logLevel": "${LOGLEVEL}",
   "stateSyncServerDelay": ${STATESYNC_DELAY}
 }
 EOF
+mkdir -p /tmp/tokenvm-e2e-profiles
 
 ############################
 
@@ -130,7 +139,7 @@ echo "creating subnet config"
 rm -f /tmp/tokenvm.subnet
 cat <<EOF > /tmp/tokenvm.subnet
 {
-  "proposerMinBlockDelay":100000000
+  "proposerMinBlockDelay": 100000000
 }
 EOF
 
@@ -156,7 +165,7 @@ ACK_GINKGO_RC=true ginkgo build ./tests/e2e
 # download avalanche-network-runner
 # https://github.com/ava-labs/avalanche-network-runner
 ANR_REPO_PATH=github.com/ava-labs/avalanche-network-runner
-ANR_VERSION=fc888ba0646f4396456ba2b36eb56c26aa76a26a
+ANR_VERSION=v1.4.1
 # version set
 go install -v ${ANR_REPO_PATH}@${ANR_VERSION}
 

@@ -1,3 +1,6 @@
+// Copyright (C) 2023, Ava Labs, Inc. All rights reserved.
+// See the file LICENSE for licensing terms.
+
 package consts
 
 import (
@@ -9,9 +12,12 @@ import (
 )
 
 const (
-	HRP    = "token"
-	Name   = "tokenvm"
-	Symbol = "TKN"
+	// TODO: choose a human-readable part for your hyperchain
+	HRP = ""
+	// TODO: choose a name for your hyperchain
+	Name = ""
+	// TODO: choose a token symbol
+	Symbol = ""
 )
 
 var ID ids.ID

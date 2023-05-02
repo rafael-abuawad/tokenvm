@@ -1,3 +1,6 @@
+// Copyright (C) 2023, Ava Labs, Inc. All rights reserved.
+// See the file LICENSE for licensing terms.
+
 package cmd
 
 import (
@@ -9,8 +12,8 @@ import (
 	"github.com/fatih/color"
 	"github.com/spf13/cobra"
 
-	"github.com/rafael-abuawad/samplevm/client"
-	"github.com/rafael-abuawad/samplevm/utils"
+	trpc "tokenvm/rpc"
+	"tokenvm/utils"
 )
 
 var keyCmd = &cobra.Command{
@@ -82,7 +85,7 @@ var setKeyCmd = &cobra.Command{
 			hutils.Outf("{{red}}no stored keys{{/}}\n")
 			return nil
 		}
-		_, uris, err := GetDefaultChain()
+		chainID, uris, err := GetDefaultChain()
 		if err != nil {
 			return err
 		}
@@ -90,7 +93,7 @@ var setKeyCmd = &cobra.Command{
 			hutils.Outf("{{red}}no available chains{{/}}\n")
 			return nil
 		}
-		cli := client.New(uris[0])
+		cli := trpc.NewJSONRPCClient(uris[0], chainID)
 		hutils.Outf("{{cyan}}stored keys:{{/}} %d\n", len(keys))
 		for i := 0; i < len(keys); i++ {
 			address := utils.Address(keys[i].PublicKey())
@@ -121,7 +124,12 @@ var balanceKeyCmd = &cobra.Command{
 	Use: "balance",
 	RunE: func(*cobra.Command, []string) error {
 		ctx := context.Background()
-		_, priv, _, cli, err := defaultActor()
+
+		priv, err := GetDefaultKey()
+		if err != nil {
+			return err
+		}
+		chainID, uris, err := GetDefaultChain()
 		if err != nil {
 			return err
 		}
@@ -130,7 +138,17 @@ var balanceKeyCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		_, _, err = getAssetInfo(ctx, cli, priv.PublicKey(), assetID, true)
-		return err
+
+		max := len(uris)
+		if !checkAllChains {
+			max = 1
+		}
+		for _, uri := range uris[:max] {
+			hutils.Outf("{{yellow}}uri:{{/}} %s\n", uri)
+			if _, _, err = getAssetInfo(ctx, trpc.NewJSONRPCClient(uri, chainID), priv.PublicKey(), assetID, true); err != nil {
+				return err
+			}
+		}
+		return nil
 	},
 }

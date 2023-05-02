@@ -1,3 +1,6 @@
+// Copyright (C) 2023, Ava Labs, Inc. All rights reserved.
+// See the file LICENSE for licensing terms.
+
 package main
 
 import (
@@ -5,11 +8,12 @@ import (
 	"fmt"
 	"os"
 
+	"tokenvm/cmd/tokenvm/version"
+	"tokenvm/controller"
+
 	"github.com/ava-labs/avalanchego/utils/logging"
 	"github.com/ava-labs/avalanchego/utils/ulimit"
 	"github.com/ava-labs/avalanchego/vms/rpcchainvm"
-	"github.com/rafael-abuawad/samplevm/cmd/tokenvm/version"
-	"github.com/rafael-abuawad/samplevm/controller"
 	"github.com/spf13/cobra"
 )
 

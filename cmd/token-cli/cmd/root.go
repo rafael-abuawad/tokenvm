@@ -1,3 +1,6 @@
+// Copyright (C) 2023, Ava Labs, Inc. All rights reserved.
+// See the file LICENSE for licensing terms.
+
 // "token-cli" implements tokenvm client operation interface.
 package cmd
 
@@ -21,11 +24,16 @@ var (
 	dbPath string
 	db     database.Database
 
-	genesisFile     string
-	minUnitPrice    int64
-	hideTxs         bool
-	randomRecipient bool
-	maxTxBacklog    int
+	genesisFile        string
+	minUnitPrice       int64
+	maxBlockUnits      int64
+	windowTargetUnits  int64
+	windowTargetBlocks int64
+	hideTxs            bool
+	randomRecipient    bool
+	maxTxBacklog       int
+	deleteOtherChains  bool
+	checkAllChains     bool
 
 	rootCmd = &cobra.Command{
 		Use:        "token-cli",
@@ -42,6 +50,7 @@ func init() {
 		chainCmd,
 		actionCmd,
 		spamCmd,
+		metricsCmd,
 	)
 	rootCmd.PersistentFlags().StringVar(
 		&dbPath,
@@ -61,9 +70,6 @@ func init() {
 	rootCmd.SilenceErrors = true
 
 	// genesis
-	genesisCmd.AddCommand(
-		genGenesisCmd,
-	)
 	genGenesisCmd.PersistentFlags().StringVar(
 		&genesisFile,
 		"genesis-file",
@@ -76,8 +82,35 @@ func init() {
 		-1,
 		"minimum price",
 	)
+	genGenesisCmd.PersistentFlags().Int64Var(
+		&maxBlockUnits,
+		"max-block-units",
+		-1,
+		"max block units",
+	)
+	genGenesisCmd.PersistentFlags().Int64Var(
+		&windowTargetUnits,
+		"window-target-units",
+		-1,
+		"window target units",
+	)
+	genGenesisCmd.PersistentFlags().Int64Var(
+		&windowTargetBlocks,
+		"window-target-blocks",
+		-1,
+		"window target blocks",
+	)
+	genesisCmd.AddCommand(
+		genGenesisCmd,
+	)
 
 	// key
+	balanceKeyCmd.PersistentFlags().BoolVar(
+		&checkAllChains,
+		"check-all-chains",
+		false,
+		"check all chains",
+	)
 	keyCmd.AddCommand(
 		genKeyCmd,
 		importKeyCmd,
@@ -92,9 +125,16 @@ func init() {
 		false,
 		"hide txs",
 	)
+	importAvalancheOpsChainCmd.PersistentFlags().BoolVar(
+		&deleteOtherChains,
+		"delete-other-chains",
+		true,
+		"delete other chains",
+	)
 	chainCmd.AddCommand(
 		importChainCmd,
 		importANRChainCmd,
+		importAvalancheOpsChainCmd,
 		setChainCmd,
 		chainInfoCmd,
 		watchChainCmd,
@@ -103,8 +143,18 @@ func init() {
 	// actions
 	actionCmd.AddCommand(
 		transferCmd,
+
 		createAssetCmd,
 		mintAssetCmd,
+		// burnAssetCmd,
+		// modifyAssetCmd,
+
+		createOrderCmd,
+		fillOrderCmd,
+		closeOrderCmd,
+
+		importAssetCmd,
+		exportAssetCmd,
 	)
 
 	// spam
@@ -122,6 +172,11 @@ func init() {
 	)
 	spamCmd.AddCommand(
 		runSpamCmd,
+	)
+
+	// metrics
+	metricsCmd.AddCommand(
+		prometheusCmd,
 	)
 }
 

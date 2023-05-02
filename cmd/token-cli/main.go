@@ -1,11 +1,15 @@
+// Copyright (C) 2023, Ava Labs, Inc. All rights reserved.
+// See the file LICENSE for licensing terms.
+
 // "token-cli" implements tokenvm client operation interface.
 package main
 
 import (
 	"os"
 
+	"tokenvm/cmd/token-cli/cmd"
+
 	"github.com/ava-labs/hypersdk/utils"
-	"github.com/rafael-abuawad/samplevm/cmd/token-cli/cmd"
 )
 
 func main() {

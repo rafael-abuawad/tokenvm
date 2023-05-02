@@ -1,3 +1,6 @@
+// Copyright (C) 2023, Ava Labs, Inc. All rights reserved.
+// See the file LICENSE for licensing terms.
+
 package cmd
 
 import (
@@ -7,7 +10,7 @@ import (
 	"github.com/fatih/color"
 	"github.com/spf13/cobra"
 
-	"github.com/rafael-abuawad/samplevm/genesis"
+	"tokenvm/genesis"
 )
 
 var genesisCmd = &cobra.Command{
@@ -30,6 +33,15 @@ var genGenesisCmd = &cobra.Command{
 		g := genesis.Default()
 		if minUnitPrice >= 0 {
 			g.MinUnitPrice = uint64(minUnitPrice)
+		}
+		if maxBlockUnits >= 0 {
+			g.MaxBlockUnits = uint64(maxBlockUnits)
+		}
+		if windowTargetUnits >= 0 {
+			g.WindowTargetUnits = uint64(windowTargetUnits)
+		}
+		if windowTargetBlocks >= 0 {
+			g.WindowTargetBlocks = uint64(windowTargetBlocks)
 		}
 
 		a, err := os.ReadFile(args[0])

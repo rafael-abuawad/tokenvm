@@ -1,10 +1,13 @@
+// Copyright (C) 2023, Ava Labs, Inc. All rights reserved.
+// See the file LICENSE for licensing terms.
+
 package vm
 
 import (
 	"github.com/ava-labs/avalanchego/utils/logging"
 	"github.com/ava-labs/avalanchego/vms"
 
-	"github.com/rafael-abuawad/samplevm/controller"
+	"tokenvm/controller"
 )
 
 var _ vms.Factory = &Factory{}

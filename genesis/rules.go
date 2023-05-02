@@ -1,3 +1,6 @@
+// Copyright (C) 2023, Ava Labs, Inc. All rights reserved.
+// See the file LICENSE for licensing terms.
+
 package genesis
 
 import (
@@ -11,6 +14,7 @@ type Rules struct {
 	g *Genesis
 }
 
+// TODO: use upgradeBytes
 func (g *Genesis) Rules(int64) *Rules {
 	return &Rules{g}
 }

@@ -1,3 +1,6 @@
+// Copyright (C) 2023, Ava Labs, Inc. All rights reserved.
+// See the file LICENSE for licensing terms.
+
 package version
 
 import (
@@ -5,8 +8,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/rafael-abuawad/samplevm/consts"
-	"github.com/rafael-abuawad/samplevm/version"
+	"tokenvm/consts"
+	"tokenvm/version"
 )
 
 func init() {

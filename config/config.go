@@ -1,22 +1,33 @@
+// Copyright (C) 2023, Ava Labs, Inc. All rights reserved.
+// See the file LICENSE for licensing terms.
 package config
 
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/ava-labs/avalanchego/ids"
 	"github.com/ava-labs/avalanchego/utils/logging"
+	"github.com/ava-labs/avalanchego/utils/profiler"
 	"github.com/ava-labs/hypersdk/config"
 	"github.com/ava-labs/hypersdk/trace"
 	"github.com/ava-labs/hypersdk/vm"
 
-	"github.com/rafael-abuawad/samplevm/consts"
-	"github.com/rafael-abuawad/samplevm/utils"
-	"github.com/rafael-abuawad/samplevm/version"
+	"tokenvm/consts"
+	"tokenvm/utils"
+	"tokenvm/version"
 )
 
 var _ vm.Config = (*Config)(nil)
+
+const (
+	defaultPreferredBlocksPerSecond    = 2
+	defaultContinuousProfilerFrequency = 1 * time.Minute
+	defaultContinuousProfilerMaxFiles  = 10
+	defaultMempoolVerifyBalances       = true
+)
 
 type Config struct {
 	*config.Config
@@ -25,20 +36,31 @@ type Config struct {
 	TraceEnabled    bool    `json:"traceEnabled"`
 	TraceSampleRate float64 `json:"traceSampleRate"`
 
+	// Profiling
+	ContinuousProfilerDir string `json:"continuousProfilerDir"` // "*" is replaced with rand int
+
 	// Streaming Ports
-	DecisionsPort        uint16 `json:"decisionsPort"`
-	BlocksPort           uint16 `json:"blocksPort"`
+	StreamingPort        uint16 `json:"streamingPort"`
 	StreamingBacklogSize int    `json:"streamingBacklogSize"`
 
 	// Mempool
-	MempoolSize         int      `json:"mempoolSize"`
-	MempoolPayerSize    int      `json:"mempoolPayerSize"`
-	MempoolExemptPayers []string `json:"mempoolExemptPayers"`
+	MempoolSize           int      `json:"mempoolSize"`
+	MempoolPayerSize      int      `json:"mempoolPayerSize"`
+	MempoolExemptPayers   []string `json:"mempoolExemptPayers"`
+	MempoolVerifyBalances bool     `json:"mempoolVerifyBalances"`
+
+	// Order Book
+	//
+	// This is denoted as <asset 1>-<asset 2>
+	//
+	// TODO: add ability to denote min rate/min amount for tracking to avoid spam
+	TrackedPairs []string `json:"trackedPairs"` // which asset ID pairs we care about
 
 	// Misc
-	TestMode    bool          `json:"testMode"` // makes gossip/building manual
-	LogLevel    logging.Level `json:"logLevel"`
-	Parallelism int           `json:"parallelism"`
+	TestMode                 bool          `json:"testMode"` // makes gossip/building manual
+	LogLevel                 logging.Level `json:"logLevel"`
+	Parallelism              int           `json:"parallelism"`
+	PreferredBlocksPerSecond uint64        `json:"preferredBlocksPerSecond"`
 
 	// State Sync
 	StateSyncServerDelay time.Duration `json:"stateSyncServerDelay"` // for testing
@@ -72,44 +94,25 @@ func New(nodeID ids.NodeID, b []byte) (*Config, error) {
 func (c *Config) setDefault() {
 	c.LogLevel = c.Config.GetLogLevel()
 	c.Parallelism = c.Config.GetParallelism()
+	c.PreferredBlocksPerSecond = defaultPreferredBlocksPerSecond
 	c.MempoolSize = c.Config.GetMempoolSize()
 	c.MempoolPayerSize = c.Config.GetMempoolPayerSize()
+	c.MempoolVerifyBalances = defaultMempoolVerifyBalances
 	c.StateSyncServerDelay = c.Config.GetStateSyncServerDelay()
 	c.StreamingBacklogSize = c.Config.GetStreamingBacklogSize()
+	// TODO: hardcoded for testing, idk why gorilla doesn't like port 0.
+	c.StreamingPort = 4000
 }
 
-func (c *Config) GetLogLevel() logging.Level {
-	return c.LogLevel
-}
-
-func (c *Config) GetTestMode() bool {
-	return c.TestMode
-}
-
-func (c *Config) GetParallelism() int {
-	return c.Parallelism
-}
-
-func (c *Config) GetMempoolSize() int {
-	return c.MempoolSize
-}
-
-func (c *Config) GetMempoolPayerSize() int {
-	return c.MempoolPayerSize
-}
-
-func (c *Config) GetMempoolExemptPayers() [][]byte {
-	return c.parsedExemptPayers
-}
-
-func (c *Config) GetDecisionsPort() uint16 {
-	return c.DecisionsPort
-}
-
-func (c *Config) GetBlocksPort() uint16 {
-	return c.BlocksPort
-}
-
+func (c *Config) GetLogLevel() logging.Level          { return c.LogLevel }
+func (c *Config) GetTestMode() bool                   { return c.TestMode }
+func (c *Config) GetParallelism() int                 { return c.Parallelism }
+func (c *Config) GetPreferredBlocksPerSecond() uint64 { return c.PreferredBlocksPerSecond }
+func (c *Config) GetMempoolSize() int                 { return c.MempoolSize }
+func (c *Config) GetMempoolPayerSize() int            { return c.MempoolPayerSize }
+func (c *Config) GetMempoolExemptPayers() [][]byte    { return c.parsedExemptPayers }
+func (c *Config) GetMempoolVerifyBalances() bool      { return c.MempoolVerifyBalances }
+func (c *Config) GetStreamingPort() uint16            { return c.StreamingPort }
 func (c *Config) GetTraceConfig() *trace.Config {
 	return &trace.Config{
 		Enabled:         c.TraceEnabled,
@@ -119,11 +122,19 @@ func (c *Config) GetTraceConfig() *trace.Config {
 		Version:         version.Version.String(),
 	}
 }
-
-func (c *Config) GetStateSyncServerDelay() time.Duration {
-	return c.StateSyncServerDelay
-}
-
-func (c *Config) GetStreamingBacklogSize() int {
-	return c.StreamingBacklogSize
+func (c *Config) GetStateSyncServerDelay() time.Duration { return c.StateSyncServerDelay }
+func (c *Config) GetStreamingBacklogSize() int           { return c.StreamingBacklogSize }
+func (c *Config) GetContinuousProfilerConfig() *profiler.Config {
+	if len(c.ContinuousProfilerDir) == 0 {
+		return &profiler.Config{Enabled: false}
+	}
+	// Replace all instances of "*" with nodeID. This is useful when
+	// running multiple instances of tokenvm on the same machine.
+	c.ContinuousProfilerDir = strings.ReplaceAll(c.ContinuousProfilerDir, "*", c.nodeID.String())
+	return &profiler.Config{
+		Enabled:     true,
+		Dir:         c.ContinuousProfilerDir,
+		Freq:        defaultContinuousProfilerFrequency,
+		MaxNumFiles: defaultContinuousProfilerMaxFiles,
+	}
 }

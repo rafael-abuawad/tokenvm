@@ -1,3 +1,6 @@
+// Copyright (C) 2023, Ava Labs, Inc. All rights reserved.
+// See the file LICENSE for licensing terms.
+
 package controller
 
 import (
@@ -12,28 +15,37 @@ import (
 	"github.com/ava-labs/hypersdk/chain"
 	"github.com/ava-labs/hypersdk/gossiper"
 	"github.com/ava-labs/hypersdk/pebble"
+	hrpc "github.com/ava-labs/hypersdk/rpc"
 	"github.com/ava-labs/hypersdk/utils"
 	"github.com/ava-labs/hypersdk/vm"
 	"go.uber.org/zap"
 
-	"github.com/rafael-abuawad/samplevm/actions"
-	"github.com/rafael-abuawad/samplevm/config"
-	"github.com/rafael-abuawad/samplevm/consts"
-	"github.com/rafael-abuawad/samplevm/genesis"
-	"github.com/rafael-abuawad/samplevm/storage"
-	"github.com/rafael-abuawad/samplevm/version"
+	"tokenvm/actions"
+	"tokenvm/auth"
+	"tokenvm/config"
+	"tokenvm/consts"
+	"tokenvm/genesis"
+	"tokenvm/orderbook"
+	"tokenvm/rpc"
+	"tokenvm/storage"
+	"tokenvm/version"
 )
 
 var _ vm.Controller = (*Controller)(nil)
 
 type Controller struct {
-	inner        *vm.VM
+	inner *vm.VM
+
 	snowCtx      *snow.Context
 	genesis      *genesis.Genesis
 	config       *config.Config
 	stateManager *StateManager
-	metrics      *metrics
-	metaDB       database.Database
+
+	metrics *metrics
+
+	metaDB database.Database
+
+	orderBook *orderbook.OrderBook
 }
 
 func New() *vm.VM {
@@ -116,12 +128,19 @@ func (c *Controller) Initialize(
 	}
 
 	// Create handlers
+	//
+	// hypersdk handler are initiatlized automatically, you just need to
+	// initialize custom handlers here.
 	apis := map[string]*common.HTTPHandler{}
-	endpoint, err := utils.NewHandler(consts.Name, &Handler{inner.Handler(), c})
+	jsonRPCHandler, err := hrpc.NewJSONRPCHandler(
+		consts.Name,
+		rpc.NewJSONRPCServer(c),
+		common.NoLock,
+	)
 	if err != nil {
 		return nil, nil, nil, nil, nil, nil, nil, nil, nil, err
 	}
-	apis[vm.Endpoint] = endpoint
+	apis[rpc.JSONRPCEndpoint] = jsonRPCHandler
 
 	// Create builder and gossiper
 	var (
@@ -133,16 +152,21 @@ func (c *Controller) Initialize(
 		build = builder.NewManual(inner)
 		gossip = gossiper.NewManual(inner)
 	} else {
-		build = builder.NewTime(inner, builder.DefaultTimeConfig())
+		bcfg := builder.DefaultTimeConfig()
+		bcfg.PreferredBlocksPerSecond = c.config.GetPreferredBlocksPerSecond()
+		build = builder.NewTime(inner, bcfg)
 		gcfg := gossiper.DefaultProposerConfig()
 		gcfg.BuildProposerDiff = 1 // don't gossip if producing the next block
 		gossip = gossiper.NewProposer(inner, gcfg)
 	}
 
+	// Initialize order book used to track all open orders
+	c.orderBook = orderbook.New(c, c.config.TrackedPairs)
 	return c.config, c.genesis, build, gossip, blockDB, stateDB, apis, consts.ActionRegistry, consts.AuthRegistry, nil
 }
 
 func (c *Controller) Rules(t int64) chain.Rules {
+	// TODO: extend with [UpgradeBytes]
 	return c.genesis.Rules(t)
 }
 
@@ -169,13 +193,40 @@ func (c *Controller) Accepted(ctx context.Context, blk *chain.StatelessBlock) er
 			return err
 		}
 		if result.Success {
-			switch tx.Action.(type) {
+			switch action := tx.Action.(type) {
 			case *actions.CreateAsset:
 				c.metrics.createAsset.Inc()
 			case *actions.MintAsset:
 				c.metrics.mintAsset.Inc()
+			case *actions.BurnAsset:
+				c.metrics.burnAsset.Inc()
+			case *actions.ModifyAsset:
+				c.metrics.modifyAsset.Inc()
 			case *actions.Transfer:
 				c.metrics.transfer.Inc()
+			case *actions.CreateOrder:
+				c.metrics.createOrder.Inc()
+				actor := auth.GetActor(tx.Auth)
+				c.orderBook.Add(tx.ID(), actor, action)
+			case *actions.FillOrder:
+				c.metrics.fillOrder.Inc()
+				orderResult, err := actions.UnmarshalOrderResult(result.Output)
+				if err != nil {
+					// This should never happen
+					return err
+				}
+				if orderResult.Remaining == 0 {
+					c.orderBook.Remove(action.Order)
+					continue
+				}
+				c.orderBook.UpdateRemaining(action.Order, orderResult.Remaining)
+			case *actions.CloseOrder:
+				c.metrics.closeOrder.Inc()
+				c.orderBook.Remove(action.Order)
+			case *actions.ImportAsset:
+				c.metrics.importAsset.Inc()
+			case *actions.ExportAsset:
+				c.metrics.exportAsset.Inc()
 			}
 		}
 	}
